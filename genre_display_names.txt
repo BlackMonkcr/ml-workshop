@@ -1,0 +1,97 @@
+# Mapeo de géneros normalizados a nombres amigables para mostrar
+# Formato: normalized_name:display_name
+
+afrobeats:Afrobeats
+alternativo-indie:Alternative / Indie
+rock-alternativo:Alternative Rock
+andina:Andean Music
+arrocha:Arrocha
+axe:Axé
+bachata:Bachata
+blues:Blues
+bolero:Bolero
+bossa-nova:Bossa Nova
+funk-brasileiro:Brazilian Funk
+brega-funk:Brega-funk
+bregue:Bregue
+classico:Clássico
+corridos:Corridos
+country:Country
+cuarteto:Cuarteto
+cumbia:Cumbia
+dance:Dance
+dancehall:Dancehall
+dembow:Dembow
+disco:Disco
+eletronica:Eletrônica
+emocore:Emocore
+experimental:Experimental
+fado:Fado
+flamenco:Flamenco/Bulerías
+folk:Folk
+forro:Forró
+funk-internacional:Funk Internacional
+gospel:Gospel/Religioso
+gothic:Gothic
+grunge:Grunge
+guarania:Guarânia
+hard-rock:Hard Rock
+hardcore:Hardcore
+heavy-metal:Heavy Metal
+hip-hop-rap:Hip-Hop/Rap
+house:House
+hyperpop:Hyperpop
+industrial:Industrial
+infantil:Infantil
+instrumental:Instrumental
+j-pop:J-Pop/J-Rock
+jazz:Jazz
+k-pop:K-Pop
+mpb:MPB
+mambo:Mambo
+marchas-hinos:Marchas/Hinos
+mariachi:Mariachi
+merengue:Merengue
+metal:Metal
+banda:Música de Banda
+nativista:Nativist Music
+new-age:New Age
+new-wave:New Wave
+pagode:Pagode
+piseiro:Piseiro
+pop:Pop
+pop-rock:Pop Rock
+post-rock:Post-Rock
+power-pop:Power Pop
+psicodelico:Psicodelia
+punk-rock:Punk Rock
+rnb:R&B
+ranchera:Ranchera
+reggae:Reggae
+reggaeton:Reggaeton
+regional:Regional
+rock:Rock
+rock-progressivo:Rock Progressivo
+rock-n-roll:Rock'n'Roll
+rockabilly:Rockabilly
+romantico:Romantic
+salsa:Salsa
+samba:Samba
+samba-enredo:Samba Enredo
+sertanejo:Sertanejo
+ska:Ska
+soft-rock:Soft Rock
+soul:Soul
+surf-music:Surf Music
+tango:Tango
+technopop:Technopop
+trap:Trap
+trova:Trova
+rkt:Turreo RKT
+vallenato:Vallenato
+velha-guarda:Velha Guarda
+world-music:World Music
+xote:Xote
+jovem-guarda:Young Guard
+zamba:Zamba
+zouk:Zouk
