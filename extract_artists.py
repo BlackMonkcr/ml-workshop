@@ -63,9 +63,9 @@ def get_artists_for_genre(args):
         print(f"✅ {genre}: {len(artists)} artistas encontrados")
         return {
             'genre': genre,
-            'artists': artists,
+            'artists': artists[:100],
             'success': True,
-            'message': f'{len(artists)} artistas'
+            'message': f'{len(artists[:100])} artistas'
         }
 
     except requests.exceptions.RequestException as e:
