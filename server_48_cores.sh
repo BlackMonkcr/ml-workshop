@@ -11,13 +11,13 @@ echo "• Memoria total: $(free -h | awk '/^Mem:/ {print $2}')"
 echo "• Espacio en disco: $(df -h . | awk 'NR==2 {print $4}')"
 
 # Configurar variables de entorno para máximo rendimiento
-export BATCH_SIZE=2000              # Lotes grandes para aprovechar RAM
-export MAX_WORKERS=46               # 48 CPUs - 2 para sistema
+export BATCH_SIZE=1000              # Lotes más pequeños para threading
+export MAX_WORKERS=32               # Threads conservadores inicialmente
 export MEMORY_GB=120                # 120GB de 130GB disponibles  
-export SPOTIFY_RATE_LIMIT=500       # Rate limit alto para paralelización
-export OMP_NUM_THREADS=48           # OpenMP para transformers
-export MKL_NUM_THREADS=48           # Intel MKL para NumPy
-export NUMBA_NUM_THREADS=48         # Numba para cálculos numéricos
+export SPOTIFY_RATE_LIMIT=300       # Rate limit moderado para threads
+export OMP_NUM_THREADS=8            # Reducir para evitar contención
+export MKL_NUM_THREADS=8            # Reducir para threads
+export NUMBA_NUM_THREADS=8          # Reducir para threads
 
 # Configurar Python para alto rendimiento
 export PYTHONHASHSEED=0
@@ -89,7 +89,7 @@ echo "🚀 Iniciando procesamiento paralelo masivo..."
 echo "   (Logs detallados en: server_processing.log)"
 
 # Ejecutar procesamiento optimizado
-time python3 server_optimized.py spanish_songs.pickle spanish_songs_server_final.pickle
+time python3 server_optimized_fixed.py spanish_songs.pickle spanish_songs_server_final.pickle
 
 # Verificar resultado
 if [ -f "spanish_songs_server_final.pickle" ]; then
