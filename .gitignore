@@ -1,2 +1,64 @@
+# 🚀 GITIGNORE PARA ML WORKSHOP - PRODUCCIÓN
+
+# Entornos virtuales
 venv/
-lyrics_by_genre_parallel.pickle
+env/
+.venv/
+.env/
+
+# Archivos de datos procesados/temporales
+*.pickle
+*.csv
+*.json
+*.sql
+
+# EXCEPCIONES: Archivos base necesarios
+!requirements.txt
+
+# Cache de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.cache/
+
+# Archivos de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Archivos de sistema
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs y archivos temporales
+*.log
+*.tmp
+*.temp
+backup_*/
+processing.log
+
+# Archivos de configuración local
+.env
+config.local.py
+spotify_config.py
+
+# Archivos de desarrollo/testing
+test_*
+demo_*
+*_test.py
+*_demo.*
+*_backup.*
+
+# Archivos con timestamps (generados automáticamente)
+*_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_[0-9][0-9][0-9][0-9][0-9][0-9].*
+
+# Documentación temporal/redundante
+README_*.md
+SPOTIFY_*.md
