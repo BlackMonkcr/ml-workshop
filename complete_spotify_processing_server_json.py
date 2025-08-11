@@ -110,52 +110,149 @@ class ThreadSafeSpotifyAPI:
         return None
 
     def search_track(self, artist, song_title, max_retries=2):
-        """Buscar canción en Spotify (thread-safe)"""
+        """Buscar canción en Spotify (thread-safe) - ESTRATEGIAS OPTIMIZADAS"""
         token = self.get_token()
         if not token:
-            return {"spotify_found": False, "error": "no_token"}
+            return None
 
-        clean_artist = re.sub(r'[^\w\s]', '', artist)[:30]
-        clean_song = re.sub(r'[^\w\s]', '', song_title)[:30]
-        query = f"artist:{clean_artist} track:{clean_song}"
+        # Limpiar nombres primero
+        clean_artist = self._clean_name(artist)
+        clean_song = self._clean_name(song_title)
+
+        # Estrategias ordenadas por efectividad (basado en diagnóstico)
+        search_strategies = [
+            f"{clean_artist} {clean_song}",                    # Simple - 100% éxito
+            f"\"{clean_song}\" {clean_artist}",                # Song first - 100% éxito  
+            f"{clean_artist.split()[0] if clean_artist.split() else clean_artist} {clean_song}",  # Partial artist
+            f"\"{clean_song}\"",                               # Just song - 100% éxito
+            f"artist:\"{clean_artist}\" track:\"{clean_song}\"" # Original (fallback)
+        ]
 
         search_url = "https://api.spotify.com/v1/search"
         headers = {"Authorization": f"Bearer {token}"}
-        params = {"q": query, "type": "track", "limit": 1}
 
-        for attempt in range(max_retries):
-            try:
-                time.sleep(RATE_LIMIT_DELAY)
-                response = requests.get(search_url, headers=headers, params=params, timeout=5)
+        for strategy_idx, query in enumerate(search_strategies):
+            for attempt in range(max_retries):
+                try:
+                    time.sleep(RATE_LIMIT_DELAY)
+                    
+                    params = {"q": query, "type": "track", "limit": 10}  # Más resultados para mejor matching
+                    
+                    response = requests.get(search_url, headers=headers, params=params, timeout=10)
 
-                if response.status_code == 200:
-                    data = response.json()
-                    tracks = data.get("tracks", {}).get("items", [])
+                    if response.status_code == 200:
+                        data = response.json()
+                        tracks = data.get("tracks", {}).get("items", [])
 
-                    if tracks:
-                        track = tracks[0]
-                        return {
-                            "spotify_found": True,
-                            "popularity": track.get("popularity", 0),
-                            "explicit_content": track.get("explicit", False),
-                            "duration_ms": track.get("duration_ms", 0),
-                            "release_date": track.get("album", {}).get("release_date", ""),
-                            "spotify_id": track.get("id", "")
-                        }
+                        if tracks:
+                            # Buscar la mejor coincidencia
+                            best_track = self._find_best_match(tracks, artist, song_title)
+                            
+                            if best_track:
+                                return {
+                                    "spotify_found": True,
+                                    "popularity": best_track.get("popularity", 0),
+                                    "explicit_content": best_track.get("explicit", False),
+                                    "duration_ms": best_track.get("duration_ms", 0),
+                                    "release_date": best_track.get("album", {}).get("release_date", ""),
+                                    "spotify_id": best_track.get("id", ""),
+                                    "spotify_name": best_track.get("name", ""),
+                                    "spotify_artist": ", ".join([a.get("name", "") for a in best_track.get("artists", [])]),
+                                    "search_strategy": strategy_idx + 1,
+                                    "search_query": query
+                                }
 
-                elif response.status_code == 429:
-                    retry_after = min(int(response.headers.get('Retry-After', 1)), 10)
-                    time.sleep(retry_after)
-                    continue
+                    elif response.status_code == 429:
+                        retry_after = min(int(response.headers.get('Retry-After', 1)), 10)
+                        time.sleep(retry_after)
+                        continue
 
-                break
+                    elif response.status_code == 401:
+                        token = self.get_token()
+                        if token:
+                            headers = {"Authorization": f"Bearer {token}"}
+                            continue
+                        else:
+                            return None
 
-            except Exception as e:
-                if attempt == max_retries - 1:
-                    logger.warning(f"Error búsqueda Spotify: {e}")
-                time.sleep(0.5)
+                    break  # Si llegamos aquí, la estrategia falló, probar siguiente
 
-        return {"spotify_found": False}
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        logger.debug(f"Error búsqueda Spotify estrategia {strategy_idx + 1}: {e}")
+                    time.sleep(0.5)
+
+        return None
+    
+    def _clean_name(self, name):
+        """Limpiar nombre para búsqueda optimizada"""
+        if not name:
+            return ""
+        
+        # Reemplazar separadores problemáticos
+        cleaned = name.replace('/', ' ').replace('-', ' ').replace('_', ' ')
+        
+        # Normalizar espacios múltiples
+        cleaned = re.sub(r'\s+', ' ', cleaned)
+        
+        # Remover palabras problemáticas comunes
+        problematic_words = ['feat', 'ft', 'featuring', 'part', 'pt', 'remix', 'version']
+        words = cleaned.lower().split()
+        filtered_words = [word for word in words if word not in problematic_words]
+        
+        if filtered_words:  # Si quedan palabras después del filtrado
+            cleaned = ' '.join(filtered_words)
+        
+        return cleaned.strip().title()
+    
+    def _find_best_match(self, tracks, target_artist, target_song):
+        """Encontrar la mejor coincidencia - ALGORITMO MEJORADO"""
+        def similarity_score(track_name, track_artists, target_song, target_artist):
+            # Normalizar para comparación
+            track_name_norm = re.sub(r'[^\w\s]', '', track_name.lower())
+            target_song_norm = re.sub(r'[^\w\s]', '', target_song.lower())
+            
+            track_artist_norm = re.sub(r'[^\w\s]', '', track_artists.lower())
+            target_artist_norm = re.sub(r'[^\w\s]', '', target_artist.lower())
+            
+            # Calcular similitud por palabras clave
+            song_words_track = set(track_name_norm.split())
+            song_words_target = set(target_song_norm.split())
+            
+            artist_words_track = set(track_artist_norm.split())
+            artist_words_target = set(target_artist_norm.split())
+            
+            # Similitud de canciones (más peso)
+            if song_words_target:
+                song_similarity = len(song_words_track & song_words_target) / len(song_words_target)
+            else:
+                song_similarity = 0
+            
+            # Similitud de artistas
+            if artist_words_target:
+                artist_similarity = len(artist_words_track & artist_words_target) / len(artist_words_target)
+            else:
+                artist_similarity = 0
+            
+            # Score final (priorizamos título de canción)
+            return song_similarity * 0.7 + artist_similarity * 0.3
+        
+        best_track = None
+        best_score = 0.4  # Umbral más bajo para ser más inclusivo
+        
+        for track in tracks:
+            artists_str = ", ".join([a.get("name", "") for a in track.get("artists", [])])
+            score = similarity_score(track.get("name", ""), artists_str, target_song, target_artist)
+            
+            # Bonus por popularidad (tracks más populares son más probables de ser correctos)
+            popularity_bonus = (track.get("popularity", 0) / 100) * 0.1
+            final_score = score + popularity_bonus
+            
+            if final_score > best_score:
+                best_score = final_score
+                best_track = track
+        
+        return best_track
 
 def clean_lyrics_text(lyrics: str) -> str:
     """Limpiar letras de contenido HTML y navegación"""
@@ -200,80 +297,89 @@ def is_valid_song(song_key: str, artist_path: str, lyrics: str) -> bool:
 
     return True
 
-def estimate_audio_features(popularity: int) -> dict:
-    """Estimar características musicales basadas en popularidad"""
-    base_energy = 0.4 + (popularity / 100) * 0.4
-    base_danceability = 0.3 + (popularity / 100) * 0.5
-
-    return {
-        'energy': round(base_energy + random.uniform(-0.1, 0.1), 4),
-        'danceability': round(base_danceability + random.uniform(-0.1, 0.1), 4),
-        'valence': round(0.3 + (popularity / 100) * 0.4 + random.uniform(-0.1, 0.1), 4),
-        'speechiness': round(random.uniform(0.02, 0.15), 4),
-        'acousticness': round(random.uniform(0.1, 0.8), 4),
-        'instrumentalness': round(random.uniform(0.0, 0.1), 4),
-        'liveness': round(random.uniform(0.05, 0.25), 4),
-        'loudness': round(random.uniform(-15, -5), 4),
-        'tempo': round(random.uniform(80, 140), 2),
-        'key': random.randint(0, 11),
-        'mode': random.randint(0, 1),
-        'time_signature': random.choice([3, 4, 5]),
-        'is_estimated': True
-    }
+def get_audio_features_from_spotify(spotify_api, track_id):
+    """Obtener características de audio reales de Spotify"""
+    if not spotify_api or not track_id:
+        return {}
+    
+    token = spotify_api.get_token()
+    if not token:
+        return {}
+    
+    try:
+        features_url = f"https://api.spotify.com/v1/audio-features/{track_id}"
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        response = requests.get(features_url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            features = response.json()
+            return {
+                'energy': features.get('energy'),
+                'danceability': features.get('danceability'),
+                'valence': features.get('valence'),
+                'speechiness': features.get('speechiness'),
+                'acousticness': features.get('acousticness'),
+                'instrumentalness': features.get('instrumentalness'),
+                'liveness': features.get('liveness'),
+                'loudness': features.get('loudness'),
+                'tempo': features.get('tempo'),
+                'key': features.get('key'),
+                'mode': features.get('mode'),
+                'time_signature': features.get('time_signature'),
+                'audio_features_available': True
+            }
+    except Exception as e:
+        logger.debug(f"Error obteniendo audio features: {e}")
+    
+    return {'audio_features_available': False}
 
 def process_song_batch(songs_batch, spotify_api, batch_id):
-    """Procesar lote de canciones con Spotify"""
+    """Procesar lote de canciones con Spotify - SOLO DATOS REALES"""
     processed_songs = []
-    stats = {'found': 0, 'not_found': 0, 'errors': 0}
+    stats = {'found': 0, 'not_found': 0, 'errors': 0, 'skipped': 0}
     
-    logger.info(f"🎵 Lote {batch_id}: Iniciando procesamiento de {len(songs_batch)} canciones")
+    logger.info(f"🎵 Lote {batch_id}: Iniciando procesamiento de {len(songs_batch)} canciones (SOLO SPOTIFY)")
     
     for i, song in enumerate(songs_batch):
         try:
-            doc = song.copy()
-            
             if i % 10 == 0 and i > 0:
-                logger.info(f"📊 Lote {batch_id}: Procesadas {i}/{len(songs_batch)} - Stats: {stats['found']}✅ {stats['not_found']}⚠️ {stats['errors']}❌")
+                logger.info(f"📊 Lote {batch_id}: Procesadas {i}/{len(songs_batch)} - Stats: {stats['found']}✅ {stats['skipped']}⏭️ {stats['errors']}❌")
             
-            if spotify_api:
-                logger.debug(f"🔍 Buscando: {song['artist']} - {song['song_title']}")
-                spotify_data = spotify_api.search_track(song['artist'], song['song_title'])
+            if not spotify_api:
+                logger.warning("❌ Sin API de Spotify, saltando canción")
+                stats['skipped'] += 1
+                continue
+            
+            # Buscar en Spotify (datos reales únicamente)
+            logger.debug(f"🔍 Buscando: {song['artist']} - {song['song_title']}")
+            spotify_data = spotify_api.search_track(song['artist'], song['song_title'])
+            
+            if not spotify_data or not spotify_data.get('spotify_found'):
+                # Si no se encuentra en Spotify, SALTAR la canción
+                logger.debug(f"⏭️ Saltando (no en Spotify): {song['artist']} - {song['song_title']}")
+                stats['skipped'] += 1
+                continue
+            
+            # Crear documento solo con datos de Spotify
+            doc = song.copy()
+            doc.update(spotify_data)
+            
+            # Obtener características de audio reales de Spotify
+            if spotify_data.get('spotify_id'):
+                audio_features = get_audio_features_from_spotify(spotify_api, spotify_data['spotify_id'])
+                doc.update(audio_features)
                 
-                if spotify_data:
-                    doc.update(spotify_data)
-                    
-                    if spotify_data.get('spotify_found'):
-                        stats['found'] += 1
-                        audio_features = estimate_audio_features(spotify_data.get('popularity', 50))
-                        doc.update(audio_features)
-                    else:
-                        stats['not_found'] += 1
-                        estimated_data = {
-                            'spotify_found': False,
-                            'popularity': random.randint(20, 70),
-                            'explicit_content': False,
-                            'duration_ms': random.randint(120000, 300000)
-                        }
-                        doc.update(estimated_data)
-                        doc.update(estimate_audio_features(estimated_data['popularity']))
-                else:
-                    stats['errors'] += 1
-            else:
-                estimated_data = {
-                    'spotify_found': False,
-                    'popularity': random.randint(20, 70),
-                    'explicit_content': False,
-                    'duration_ms': random.randint(120000, 300000)
-                }
-                doc.update(estimated_data)
-                doc.update(estimate_audio_features(estimated_data['popularity']))
-
+                # Pequeño delay para evitar rate limiting en audio features
+                time.sleep(0.1)
+            
             # Metadata adicional
             doc.update({
                 'lyrics_word_count': len(doc['lyrics'].split()),
                 'processed_date': datetime.now().isoformat(),
-                'source': 'server_processing_json_export',
-                'dataset_version': 'v4.1'
+                'source': 'server_spotify_only',
+                'dataset_version': 'v5.0_spotify_only',
+                'data_source': 'spotify_real_data_only'
             })
 
             # ID único
@@ -283,12 +389,13 @@ def process_song_batch(songs_batch, spotify_api, batch_id):
             doc['unique_id'] = f"{clean_artist}_{clean_song}_{clean_genre}"
 
             processed_songs.append(doc)
+            stats['found'] += 1
             
         except Exception as e:
             logger.error(f"❌ Error procesando canción en lote {batch_id}: {e}")
             stats['errors'] += 1
 
-    logger.info(f"✅ Lote {batch_id} completado: {len(processed_songs)} canciones procesadas - {stats['found']}✅ {stats['not_found']}⚠️ {stats['errors']}❌")
+    logger.info(f"✅ Lote {batch_id} completado: {len(processed_songs)} canciones con datos Spotify - {stats['found']}✅ {stats['skipped']}⏭️ {stats['errors']}❌")
     return processed_songs, stats
 
 def collect_valid_songs(data, sample_size=None):
@@ -344,14 +451,14 @@ def collect_valid_songs(data, sample_size=None):
     return all_songs
 
 def process_with_threading(all_songs, spotify_api, max_workers=MAX_WORKERS):
-    """Procesar canciones usando threading"""
-    logger.info(f"🧵 Procesando con {max_workers} threads...")
+    """Procesar canciones usando threading - SOLO DATOS SPOTIFY REALES"""
+    logger.info(f"🧵 Procesando con {max_workers} threads (SOLO DATOS SPOTIFY)...")
     
     batches = [all_songs[i:i + BATCH_SIZE] for i in range(0, len(all_songs), BATCH_SIZE)]
     logger.info(f"📦 Dividido en {len(batches)} lotes de ~{BATCH_SIZE} canciones")
 
     processed_documents = []
-    total_stats = {'found': 0, 'not_found': 0, 'errors': 0}
+    total_stats = {'found': 0, 'skipped': 0, 'errors': 0}
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
@@ -368,20 +475,21 @@ def process_with_threading(all_songs, spotify_api, max_workers=MAX_WORKERS):
                     processed_documents.extend(batch_results)
                     
                     for key in total_stats:
-                        total_stats[key] += batch_stats[key]
+                        if key in batch_stats:
+                            total_stats[key] += batch_stats[key]
                     
                     completed_batches += 1
                     
                     pbar.set_postfix({
                         'Lote': f"{completed_batches}/{len(batches)}",
-                        'Encontradas': total_stats['found'],
-                        'No encontradas': total_stats['not_found'],
+                        'Con Spotify': total_stats['found'],
+                        'Saltadas': total_stats['skipped'],
                         'Errores': total_stats['errors'],
                         'Total docs': len(processed_documents)
                     })
                     
                     if completed_batches % 5 == 0:
-                        logger.info(f"📊 Progreso: {completed_batches}/{len(batches)} lotes - {len(processed_documents):,} documentos procesados")
+                        logger.info(f"📊 Progreso: {completed_batches}/{len(batches)} lotes - {len(processed_documents):,} documentos con datos Spotify")
                         
                 except Exception as e:
                     logger.error(f"❌ Error en lote {batch_id}: {e}")
@@ -392,10 +500,11 @@ def process_with_threading(all_songs, spotify_api, max_workers=MAX_WORKERS):
                 if completed_batches % 10 == 0:
                     gc.collect()
 
-    logger.info("📊 Estadísticas finales Spotify:")
-    logger.info(f"   Encontradas: {total_stats['found']:,}")
-    logger.info(f"   No encontradas: {total_stats['not_found']:,}")
-    logger.info(f"   Errores: {total_stats['errors']:,}")
+    logger.info("📊 Estadísticas finales:")
+    logger.info(f"   ✅ Con datos Spotify: {total_stats['found']:,}")
+    logger.info(f"   ⏭️ Saltadas (sin Spotify): {total_stats['skipped']:,}")
+    logger.info(f"   ❌ Errores: {total_stats['errors']:,}")
+    logger.info(f"   📊 Tasa de éxito Spotify: {(total_stats['found']/(total_stats['found']+total_stats['skipped'])*100):.1f}%")
 
     return processed_documents
 
@@ -461,12 +570,13 @@ def save_to_json_files(documents):
 
 def process_complete_dataset_to_json(input_file: str = "spanish_songs_server_final.pickle",
                                    sample_size: int = None, use_spotify: bool = True):
-    """Procesar dataset completo y exportar a JSON"""
+    """Procesar dataset completo y exportar a JSON - SOLO DATOS SPOTIFY REALES"""
 
-    logger.info("🚀 PROCESAMIENTO OPTIMIZADO PARA SERVIDOR - EXPORTACIÓN JSON")
+    logger.info("🚀 PROCESAMIENTO SERVIDOR - SOLO DATOS SPOTIFY REALES")
     logger.info(f"   Archivo: {input_file}")
     logger.info(f"   Muestra: {sample_size if sample_size else 'COMPLETA'} canciones")
-    logger.info(f"   Spotify API: {'Sí' if use_spotify else 'No'}")
+    logger.info(f"   Spotify API: {'Sí' if use_spotify else 'DESHABILITADO'}")
+    logger.info(f"   IMPORTANTE: Solo se procesarán canciones encontradas en Spotify")
     logger.info(f"   CPUs disponibles: {os.cpu_count()}")
     logger.info(f"   Threads configurados: {MAX_WORKERS}")
     logger.info("=" * 80)
@@ -481,14 +591,21 @@ def process_complete_dataset_to_json(input_file: str = "spanish_songs_server_fin
         logger.error(f"❌ Error cargando: {e}")
         return None
 
-    # Inicializar Spotify API
+    # Inicializar Spotify API (OBLIGATORIO)
     spotify = None
     if use_spotify:
         if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
-            logger.warning("⚠️ Credenciales Spotify no configuradas, usando solo estimaciones")
+            logger.error("❌ Credenciales Spotify REQUERIDAS para este modo")
+            return None
         else:
             logger.info("🎵 Inicializando Spotify API...")
             spotify = ThreadSafeSpotifyAPI(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, pool_size=10)
+            if not spotify.get_token():
+                logger.error("❌ No se pudo obtener token de Spotify")
+                return None
+    else:
+        logger.error("❌ Spotify API es OBLIGATORIO en este modo")
+        return None
 
     # Recopilar canciones válidas
     all_songs = collect_valid_songs(data, sample_size)
@@ -501,20 +618,21 @@ def process_complete_dataset_to_json(input_file: str = "spanish_songs_server_fin
     gc.collect()
     
     logger.info(f"🚀 Iniciando procesamiento de {len(all_songs):,} canciones...")
+    logger.info("⚠️ Solo se guardarán canciones encontradas en Spotify")
 
     # Procesar con threading
     processed_documents = process_with_threading(all_songs, spotify, MAX_WORKERS)
     
     if not processed_documents:
-        logger.error("❌ No se procesaron documentos")
+        logger.warning("⚠️ No se procesaron documentos con datos de Spotify")
         return None
 
-    logger.info(f"✅ Procesamiento completado: {len(processed_documents):,} documentos")
+    logger.info(f"✅ Procesamiento completado: {len(processed_documents):,} canciones con datos Spotify reales")
     
     return processed_documents
 
 if __name__ == "__main__":
-    logger.info("🖥️ PROCESAMIENTO OPTIMIZADO PARA SERVIDOR - JSON EXPORT")
+    logger.info("🖥️ PROCESAMIENTO SERVIDOR - SOLO DATOS SPOTIFY REALES")
     logger.info("=" * 80)
     
     start_time = time.time()
@@ -528,10 +646,16 @@ if __name__ == "__main__":
         
     logger.info("⚙️ Configuración:")
     logger.info(f"  Muestra: {'COMPLETA' if SAMPLE_SIZE is None else f'{SAMPLE_SIZE:,}'}")
-    logger.info(f"  Spotify: {USE_SPOTIFY}")
+    logger.info(f"  Spotify: {USE_SPOTIFY} (OBLIGATORIO)")
     logger.info(f"  CPUs: {MAX_WORKERS}")
     logger.info(f"  Lote: {BATCH_SIZE}")
     logger.info(f"  Salida JSON: {JSON_OUTPUT_DIR}/")
+    logger.info("  🎯 SOLO CANCIONES ENCONTRADAS EN SPOTIFY")
+
+    if not USE_SPOTIFY:
+        logger.error("❌ ERROR: Este script requiere Spotify API activado")
+        logger.info("💡 Configura USE_SPOTIFY=true en las variables de entorno")
+        sys.exit(1)
 
     # Procesar
     documents = process_complete_dataset_to_json(
@@ -541,6 +665,10 @@ if __name__ == "__main__":
 
     if not documents:
         logger.error("❌ No se procesaron documentos")
+        logger.info("💡 Posibles causas:")
+        logger.info("   - Sin credenciales de Spotify")
+        logger.info("   - Ninguna canción encontrada en Spotify")
+        logger.info("   - Error en conexión a Spotify API")
         sys.exit(1)
 
     # Guardar como JSON
@@ -552,7 +680,8 @@ if __name__ == "__main__":
         logger.info("🎉 ¡PROCESO COMPLETADO EXITOSAMENTE!")
         logger.info(f"⏱️ Tiempo total: {elapsed_time/60:.1f} minutos")
         logger.info("📂 Archivos JSON listos para transferir")
-        logger.info(f"📊 Total documentos: {len(documents):,}")
+        logger.info(f"📊 Total documentos con datos Spotify: {len(documents):,}")
+        logger.info("🎯 TODOS LOS DATOS SON REALES DE SPOTIFY")
         
         # Mostrar comando para transferir
         logger.info("\n🔄 Para transferir al PC:")

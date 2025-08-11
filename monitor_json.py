@@ -52,6 +52,7 @@ def monitor_json_progress(interval=20):
                 logger.info(f"   📈 Nuevos archivos: +{new_files}")
                 logger.info(f"   🎵 Total documentos: {total_docs:,}")
                 logger.info(f"   ⚡ Velocidad: {files_per_min:.1f} archivos/min")
+                logger.info("   🎯 SOLO DATOS REALES DE SPOTIFY")
                 
                 # Verificar archivo de resumen
                 summary_file = json_dir / "processing_summary.json"
