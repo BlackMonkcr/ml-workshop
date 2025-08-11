@@ -245,11 +245,18 @@ def process_song_batch(songs_batch, spotify_api, batch_id):
     processed_songs = []
     stats = {'found': 0, 'not_found': 0, 'errors': 0}
     
-    for song in songs_batch:
+    logger.info(f"🎵 Lote {batch_id}: Iniciando procesamiento de {len(songs_batch)} canciones")
+    
+    for i, song in enumerate(songs_batch):
         try:
             doc = song.copy()
             
+            # Log cada 10 canciones para seguimiento
+            if i % 10 == 0 and i > 0:
+                logger.info(f"📊 Lote {batch_id}: Procesadas {i}/{len(songs_batch)} - Stats: {stats['found']}✅ {stats['not_found']}⚠️ {stats['errors']}❌")
+            
             if spotify_api:
+                logger.debug(f"🔍 Buscando: {song['artist']} - {song['song_title']}")
                 spotify_data = spotify_api.search_track(song['artist'], song['song_title'])
                 
                 if spotify_data:
@@ -299,9 +306,10 @@ def process_song_batch(songs_batch, spotify_api, batch_id):
             processed_songs.append(doc)
             
         except Exception as e:
-            logger.error(f"Error procesando canción en lote {batch_id}: {e}")
+            logger.error(f"❌ Error procesando canción en lote {batch_id}: {e}")
             stats['errors'] += 1
 
+    logger.info(f"✅ Lote {batch_id} completado: {len(processed_songs)} canciones procesadas - {stats['found']}✅ {stats['not_found']}⚠️ {stats['errors']}❌")
     return processed_songs, stats
 
 def collect_valid_songs(data, sample_size=None):
@@ -376,6 +384,7 @@ def process_with_threading(all_songs, spotify_api, max_workers=MAX_WORKERS):
         }
 
         # Procesar resultados
+        completed_batches = 0
         with tqdm(total=len(batches), desc="Lotes procesados") as pbar:
             for future in as_completed(futures):
                 batch_id = futures[future]
@@ -386,21 +395,29 @@ def process_with_threading(all_songs, spotify_api, max_workers=MAX_WORKERS):
                     # Actualizar estadísticas
                     for key in total_stats:
                         total_stats[key] += batch_stats[key]
-                        
+                    
+                    completed_batches += 1
+                    
                     pbar.set_postfix({
+                        'Lote': f"{completed_batches}/{len(batches)}",
                         'Encontradas': total_stats['found'],
                         'No encontradas': total_stats['not_found'],
-                        'Errores': total_stats['errors']
+                        'Errores': total_stats['errors'],
+                        'Total docs': len(processed_documents)
                     })
                     
+                    # Log cada 5 lotes completados
+                    if completed_batches % 5 == 0:
+                        logger.info(f"📊 Progreso: {completed_batches}/{len(batches)} lotes - {len(processed_documents):,} documentos procesados")
+                        
                 except Exception as e:
-                    logger.error(f"Error en lote {batch_id}: {e}")
+                    logger.error(f"❌ Error en lote {batch_id}: {e}")
                     total_stats['errors'] += BATCH_SIZE
                     
                 pbar.update(1)
                 
                 # Liberación de memoria periódica
-                if pbar.n % 10 == 0:
+                if completed_batches % 10 == 0:
                     gc.collect()
 
     logger.info(f"📊 Estadísticas finales Spotify:")
